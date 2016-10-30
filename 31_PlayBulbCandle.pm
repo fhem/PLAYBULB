@@ -35,7 +35,7 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.2.0";
+my $version = "0.3.1";
 
 
 
@@ -149,10 +149,12 @@ sub PlayBulbCandle_Set($$@) {
         
     } elsif( $cmd eq 'speed' ) {
         $action = $cmd;
-        
+    
+    } elsif( $cmd eq 'color' ) {
+        $action = $cmd;
     
     } else {
-        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20";
+        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off";
         return "Unknown argument $cmd, choose one of $list";
     }
     
@@ -177,8 +179,13 @@ sub PlayBulbCandle($$$) {
     my $stateEffect =   $effect;
     my $ac          =   AttrVal( $name, "aColor", "0x16" );
     my $ae          =   AttrVal( $name, "aEffect", "0x14" );
-
     
+    if( $cmd eq "color" and $arg eq "off") {
+        $rgb    = "000000";
+        $sat    = "FF";
+    }
+
+
 
     BlockingKill($hash->{helper}{RUNNING_PID}) if(defined($hash->{helper}{RUNNING_PID}));
         
@@ -204,7 +211,6 @@ sub PlayBulbCandle_Run($) {
     my $ac              = $data_json->{ac};
     my $ae              = $data_json->{ae};
     my $blevel;
-    
     
     Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Running nonBlocking";
 
@@ -359,6 +365,7 @@ sub PlayBulbCandle_Done($) {
     my ($name,$response)       = split("\\|",$string);
     my $hash    = $defs{$name};
     my $state;
+    my $color;
     
     
     
@@ -368,23 +375,29 @@ sub PlayBulbCandle_Done($) {
     return if($hash->{helper}{DISABLED});
     
     
+    
     my $response_json = decode_json($response);
     
+    
     if( $response_json->{stateOnoff} == 1 ) { $state = "on" } else { $state = "off" };
+    if( $response_json->{sat} eq "255" and $response_json->{rgb} eq "000000" ) {
+        $color = "off"; } else { $color = "on"; }
+    
     
     readingsBeginUpdate($hash);
+    readingsBulkUpdate($hash, "color", "$color");
     readingsBulkUpdate($hash, "battery", $response_json->{blevel});
     readingsBulkUpdate($hash, "onoff", $response_json->{stateOnoff});
-    readingsBulkUpdate($hash, "sat", $response_json->{sat}) if( $response_json->{stateOnoff} != 0 );
-    readingsBulkUpdate($hash, "rgb", $response_json->{rgb}) if( $response_json->{stateOnoff} != 0 );
+    readingsBulkUpdate($hash, "sat", $response_json->{sat}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
+    readingsBulkUpdate($hash, "rgb", $response_json->{rgb}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
     readingsBulkUpdate($hash, "effect", $response_json->{effect});
     readingsBulkUpdate($hash, "speed", $response_json->{speed});
     readingsBulkUpdate($hash, "state", $state);
     readingsEndUpdate($hash,1);
 
     $hash->{helper}{onoff}  = $response_json->{stateOnoff};
-    $hash->{helper}{sat}    = $response_json->{sat} if( $response_json->{stateOnoff} != 0 );
-    $hash->{helper}{rgb}    = $response_json->{rgb} if( $response_json->{stateOnoff} != 0 );
+    $hash->{helper}{sat}    = $response_json->{sat} if( $response_json->{stateOnoff} != 0 and $color ne "off" );
+    $hash->{helper}{rgb}    = $response_json->{rgb} if( $response_json->{stateOnoff} != 0 and $color ne "off" );
     $hash->{helper}{effect} = $response_json->{effect};
     $hash->{helper}{speed}  = $response_json->{speed};
     
