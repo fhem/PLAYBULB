@@ -35,7 +35,7 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.3.1";
+my $version = "0.4.0";
 
 
 
