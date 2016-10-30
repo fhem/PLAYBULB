@@ -96,7 +96,7 @@ sub PlayBulbCandle_Define($$) {
     
     $modules{PlayBulbCandle}{defptr}{$hash->{BTMAC}} = $hash;
     readingsSingleUpdate ($hash,"state","Unknown", 0);
-    $attr{$name}{room}     = "Licht to Go";
+    $attr{$name}{room}     = "PLAYBULB";
     $attr{$name}{webCmd}    = "rgb:rgb FF0000:rgb 00FF00:rgb 0000FF:rgb FFFFFF:rgb F7FF00:rgb 00FFFF:rgb F700FF:effect";
     
     $hash->{helper}{effect}     = ReadingsVal($name,"effect","Candle"); 
