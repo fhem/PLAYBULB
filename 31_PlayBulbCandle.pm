@@ -35,7 +35,7 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.4.1";
+my $version = "0.5.0";
 
 
 
@@ -69,6 +69,7 @@ sub PlayBulbCandle_Initialize($) {
     
     $hash->{AttrList} 	    = "aColor ".
                               "aEffect ".
+                              "aBattery ".
                               $readingFnAttributes;
 
 
@@ -179,6 +180,7 @@ sub PlayBulbCandle($$$) {
     my $stateEffect =   $effect;
     my $ac          =   AttrVal( $name, "aColor", "0x16" );
     my $ae          =   AttrVal( $name, "aEffect", "0x14" );
+    my $ab          =   AttrVal( $name, "aBattery", "0x1f" );
     
     if( $cmd eq "color" and $arg eq "off") {
         $rgb    = "000000";
@@ -189,7 +191,7 @@ sub PlayBulbCandle($$$) {
 
     BlockingKill($hash->{helper}{RUNNING_PID}) if(defined($hash->{helper}{RUNNING_PID}));
         
-    my $response_encode = PlayBulbCandle_forRun_encodeJSON($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae);
+    my $response_encode = PlayBulbCandle_forRun_encodeJSON($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab);
         
     $hash->{helper}{RUNNING_PID} = BlockingCall("PlayBulbCandle_Run", $name."|".$response_encode, "PlayBulbCandle_Done", 5, "PlayBulbCandle_Aborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
     Log3 $name, 4, "(Sub PlayBulbCandle - $name) - Starte Blocking Call";
@@ -237,7 +239,7 @@ sub PlayBulbCandle_Run($) {
     }
     
     ###### Batteriestatus einlesen    
-    $blevel = PlayBulbCandle_readBattery($mac);
+    $blevel = PlayBulbCandle_readBattery($mac,$ab);
     
 
 
@@ -300,11 +302,11 @@ sub PlayBulbCandle_gattCharRead($$$$) {
     return ($ec,$cc,$sat,$rgb,$effect,$speed);
 }
 
-sub PlayBulbCandle_readBattery($) {
+sub PlayBulbCandle_readBattery($$) {
 
-    my ($mac)   = @_;
+    my ($mac,$ab)   = @_;
     
-    chomp(my @blevel  = split(": ",qx(gatttool -b $mac --char-read -a 0x1f)));
+    chomp(my @blevel  = split(": ",qx(gatttool -b $mac --char-read -a $ab)));
     $blevel[1] =~ s/[ \t][ \t]*//g;
     
     return hex($blevel[1]);
@@ -326,7 +328,7 @@ sub PlayBulbCandle_stateOnOff($$) {
 
 sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$) {
 
-    my ($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae) = @_;
+    my ($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab) = @_;
 
     my %data = (
         'mac'           => $mac,
@@ -337,7 +339,8 @@ sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$) {
         'speed'         => $speed,
         'stateEffect'   => $stateEffect,
         'ac'            => $ac,
-        'ae'            => $ae
+        'ae'            => $ae,
+        'ab'            => $ab
     );
     
     return encode_json \%data;
