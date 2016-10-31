@@ -35,7 +35,7 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.5.0";
+my $version = "0.6.0";
 
 
 
@@ -45,7 +45,7 @@ my %effects = (
         'RainbowJump'   =>  '02',
         'RainbowFade'   =>  '03',
         'Candle'        =>  '04',
-        'none'          =>  'FF'
+        'none'          =>  'FF',
     );
     
 my %effectsHex = (
@@ -54,7 +54,7 @@ my %effectsHex = (
         '02'            =>  'RainbowJump',
         '03'            =>  'RainbowFade',
         '04'            =>  'Candle',
-        'ff'            =>  'none'
+        'ff'            =>  'none',
     );
 
 
@@ -212,6 +212,7 @@ sub PlayBulbCandle_Run($) {
     my $stateEffect     = $data_json->{stateEffect};
     my $ac              = $data_json->{ac};
     my $ae              = $data_json->{ae};
+    my $ab              = $data_json->{ab};
     my $blevel;
     
     Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Running nonBlocking";
