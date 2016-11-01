@@ -35,9 +35,14 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.6.0";
+my $version = "0.8.0";
 
 
+
+my %playbulbModels = (
+        BTL300_v5       => {'aColor' => '0x16'    ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'},
+        BTL300_v6       => {'aColor' => '0x19'    ,'aEffect' => '0x17'    ,'aBattery' => '0x22'},
+    );
 
 my %effects = ( 
         'Flash'         =>  '00',
@@ -67,9 +72,7 @@ sub PlayBulbCandle_Initialize($) {
     $hash->{DefFn}	    = "PlayBulbCandle_Define";
     $hash->{UndefFn}	    = "PlayBulbCandle_Undef";
     
-    $hash->{AttrList} 	    = "aColor ".
-                              "aEffect ".
-                              "aBattery ".
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6 ".
                               $readingFnAttributes;
 
 
@@ -97,8 +100,10 @@ sub PlayBulbCandle_Define($$) {
     
     $modules{PlayBulbCandle}{defptr}{$hash->{BTMAC}} = $hash;
     readingsSingleUpdate ($hash,"state","Unknown", 0);
-    $attr{$name}{room}     = "PLAYBULB";
-    $attr{$name}{webCmd}    = "rgb:rgb FF0000:rgb 00FF00:rgb 0000FF:rgb FFFFFF:rgb F7FF00:rgb 00FFFF:rgb F700FF:effect";
+    $attr{$name}{room}          = "PLAYBULB" if( !defined($attr{$name}{room}) );
+    $attr{$name}{model}         = "BTL300_v5" if( !defined($attr{$name}{model}) );
+    $attr{$name}{devStateIcon}  = "unreachable:light_question" if( !defined($attr{$name}{devStateIcon}) );
+    $attr{$name}{webCmd}        = "rgb:rgb FF0000:rgb 00FF00:rgb 0000FF:rgb FFFFFF:rgb F7FF00:rgb 00FFFF:rgb F700FF:effect" if( !defined($attr{$name}{webCmd}) );
     
     $hash->{helper}{effect}     = ReadingsVal($name,"effect","Candle"); 
     $hash->{helper}{onoff}      = ReadingsVal($name,"onoff",0); 
@@ -153,9 +158,12 @@ sub PlayBulbCandle_Set($$@) {
     
     } elsif( $cmd eq 'color' ) {
         $action = $cmd;
+        
+    } elsif( $cmd eq 'statusRequest' ) {
+        $action = $cmd;
     
     } else {
-        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off";
+        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg";
         return "Unknown argument $cmd, choose one of $list";
     }
     
@@ -177,10 +185,10 @@ sub PlayBulbCandle($$$) {
     my $effect      =   $hash->{helper}{effect};
     my $speed       =   sprintf("%02x", $hash->{helper}{speed});
     my $stateOnoff  =   $hash->{helper}{onoff};
-    my $stateEffect =   $effect;
-    my $ac          =   AttrVal( $name, "aColor", "0x16" );
-    my $ae          =   AttrVal( $name, "aEffect", "0x14" );
-    my $ab          =   AttrVal( $name, "aBattery", "0x1f" );
+    my $stateEffect =   ReadingsVal($name,"effect","Candle");
+    my $ac          =   $playbulbModels{$attr{$name}{model}}{aColor};
+    my $ae          =   $playbulbModels{$attr{$name}{model}}{aEffect};
+    my $ab          =   $playbulbModels{$attr{$name}{model}}{aBattery};
     
     if( $cmd eq "color" and $arg eq "off") {
         $rgb    = "000000";
@@ -191,7 +199,7 @@ sub PlayBulbCandle($$$) {
 
     BlockingKill($hash->{helper}{RUNNING_PID}) if(defined($hash->{helper}{RUNNING_PID}));
         
-    my $response_encode = PlayBulbCandle_forRun_encodeJSON($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab);
+    my $response_encode = PlayBulbCandle_forRun_encodeJSON($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab);
         
     $hash->{helper}{RUNNING_PID} = BlockingCall("PlayBulbCandle_Run", $name."|".$response_encode, "PlayBulbCandle_Done", 5, "PlayBulbCandle_Aborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
     Log3 $name, 4, "(Sub PlayBulbCandle - $name) - Starte Blocking Call";
@@ -213,40 +221,61 @@ sub PlayBulbCandle_Run($) {
     my $ac              = $data_json->{ac};
     my $ae              = $data_json->{ae};
     my $ab              = $data_json->{ab};
+    my $cmd             = $data_json->{cmd};
     my $blevel;
+    my $cc;
+    my $ec;
     
     Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Running nonBlocking";
 
 
 
     ##### Abruf des aktuellen Status
-    #(my $ec,my $cc,$sat,$rgb,$effect,$speed)  = PlayBulbCandle_gattCharRead($mac) if( $stateEffect eq "none" );
+    #### das c vor den bekannten Variablen steht für current
+    my ($ccc,$cec,$csat,$crgb,$ceffect,$cspeed)  = PlayBulbCandle_gattCharRead($mac,$ac,$ae);
 
-    #$stateEffect = "change" if( $effect eq "ff" );
-    
-    ##### Schreiben der neuen Char values
-    PlayBulbCandle_gattCharWrite($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae);
-    
-    ##### Abruf des aktuellen Status
-    (my $ec,my $cc,$sat,$rgb,$effect,$speed)  = PlayBulbCandle_gattCharRead($mac,$stateEffect,$ac,$ae);
-    
+    if( defined($ccc) and defined($cec) ) {
 
+        
+        ### Regeln für die aktuellen Values
+        if( $cmd eq "statusRequest" ) {
+        
+            ###### Batteriestatus einlesen    
+            $blevel = PlayBulbCandle_readBattery($mac,$ab);
+            ###### Status ob An oder Aus
+            $stateOnoff = PlayBulbCandle_stateOnOff($ccc,$cec);
+            
+            Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
+            my $response_encode = PlayBulbCandle_forDone_encodeJSON($blevel,$stateOnoff,$csat,$crgb,$ceffect,$cspeed);
+            return "$name|$response_encode";
+        }
+        
+        $stateEffect = "none" if( $ceffect eq "ff" );
+
+
+        ##### Schreiben der neuen Char values
+        PlayBulbCandle_gattCharWrite($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae);
     
-    ########### Bulb an oder aus?
-    if( defined($cc) and defined($ec) ) {
+        ##### Statusabruf nach dem schreiben der neuen Char Values
+        ($cc,$ec,$sat,$rgb,$effect,$speed)  = PlayBulbCandle_gattCharRead($mac,$ac,$ae);
+
+
         $stateOnoff = PlayBulbCandle_stateOnOff($cc,$ec);
-    } else {
-        $stateOnoff = "error";
+    
+        ###### Batteriestatus einlesen    
+        $blevel = PlayBulbCandle_readBattery($mac,$ab);
+        
+        
+        Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
+        my $response_encode = PlayBulbCandle_forDone_encodeJSON($blevel,$stateOnoff,$sat,$rgb,$effect,$speed);
+        return "$name|$response_encode";
     }
-    
-    ###### Batteriestatus einlesen    
-    $blevel = PlayBulbCandle_readBattery($mac,$ab);
-    
 
 
     Log3 $name, 4, "(Sub PlayBulbCandle_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
-    my $response_encode = PlayBulbCandle_forDone_encodeJSON($blevel,$stateOnoff,$sat,$rgb,$effect,$speed);
-    return "$name|$response_encode";
+
+    return "$name|err"
+    unless( defined($cc) and defined($ec) );
 }
 
 sub PlayBulbCandle_gattCharWrite($$$$$$$$$) {
@@ -255,7 +284,7 @@ sub PlayBulbCandle_gattCharWrite($$$$$$$$$) {
     
     my $loop = 0;
     while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
-        printf "\n(Sub PlayBulbCandle_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+        #printf "\n(Sub PlayBulbCandle_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
         sleep 0.5;
         $loop++;
     }
@@ -274,17 +303,21 @@ sub PlayBulbCandle_gattCharWrite($$$$$$$$$) {
 
 sub PlayBulbCandle_gattCharRead($$$$) {
 
-    my ($mac,$stateEffect,$ac,$ae)       = @_;
+    my ($mac,$ac,$ae)       = @_;
 
     my $loop = 0;
     while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
-        printf "\n(Sub PlayBulbCandle_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+        #printf "\n(Sub PlayBulbCandle_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
         sleep 0.5;
         $loop++;
     }
     
     my @cc          = split(": ",qx(gatttool -b $mac --char-read -a $ac));
     my @ec          = split(": ",qx(gatttool -b $mac --char-read -a $ae));
+    
+    return (undef,undef,undef,undef,undef,undef)
+    unless( defined($cc[1]) and defined($ec[1]) );
+    
     
     my $cc          = join("",split(" ",$cc[1]));
     my $ec          = substr(join("",split(" ",$ec[1])),0,8);
@@ -300,7 +333,7 @@ sub PlayBulbCandle_gattCharRead($$$$) {
         $rgb            = substr(join("",split(" ",$cc[1])),2,6);
     }
     
-    return ($ec,$cc,$sat,$rgb,$effect,$speed);
+    return ($cc,$ec,$sat,$rgb,$effect,$speed);
 }
 
 sub PlayBulbCandle_readBattery($$) {
@@ -327,11 +360,12 @@ sub PlayBulbCandle_stateOnOff($$) {
     return $state;
 }
 
-sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$) {
+sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$$) {
 
-    my ($mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab) = @_;
+    my ($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab) = @_;
 
     my %data = (
+        'cmd'           => $cmd,
         'mac'           => $mac,
         'stateOnoff'    => $stateOnoff,
         'sat'           => $sat,
@@ -379,6 +413,10 @@ sub PlayBulbCandle_Done($) {
     return if($hash->{helper}{DISABLED});
     
     
+    if( $response eq "err" ) {
+        readingsSingleUpdate($hash,"state","unreachable", 1);
+        return undef;
+    }
     
     my $response_json = decode_json($response);
     
@@ -415,7 +453,8 @@ sub PlayBulbCandle_Aborted($) {
     my $name = $hash->{NAME};
 
     delete($hash->{helper}{RUNNING_PID});
-    Log3 $name, 3, "($name) - The BlockingCall Process terminated unexpectedly. Timedout";
+    readingsSingleUpdate($hash,"state","unreachable", 1);
+    Log3 $name, 4, "($name) - The BlockingCall Process terminated unexpectedly. Timedout";
 }
 
 
