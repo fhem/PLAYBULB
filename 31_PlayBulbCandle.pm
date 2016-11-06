@@ -35,13 +35,14 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.8.0";
+my $version = "0.8.1";
 
 
 
 my %playbulbModels = (
         BTL300_v5       => {'aColor' => '0x16'    ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'},
         BTL300_v6       => {'aColor' => '0x19'    ,'aEffect' => '0x17'    ,'aBattery' => '0x22'},
+        BTL201_v2       => {'aColor' => '0x1b'    ,'aEffect' => '0x19'    ,'aBattery' => '0x22'},
     );
 
 my %effects = ( 
@@ -71,8 +72,8 @@ sub PlayBulbCandle_Initialize($) {
     $hash->{SetFn}	    = "PlayBulbCandle_Set";
     $hash->{DefFn}	    = "PlayBulbCandle_Define";
     $hash->{UndefFn}	    = "PlayBulbCandle_Undef";
-    
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6 ".
+    $hash->{AttrFn}	    = "PlayBulbCandle_Attr";
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2 ".
                               $readingFnAttributes;
 
 
@@ -101,7 +102,6 @@ sub PlayBulbCandle_Define($$) {
     $modules{PlayBulbCandle}{defptr}{$hash->{BTMAC}} = $hash;
     readingsSingleUpdate ($hash,"state","Unknown", 0);
     $attr{$name}{room}          = "PLAYBULB" if( !defined($attr{$name}{room}) );
-    $attr{$name}{model}         = "BTL300_v5" if( !defined($attr{$name}{model}) );
     $attr{$name}{devStateIcon}  = "unreachable:light_question" if( !defined($attr{$name}{devStateIcon}) );
     $attr{$name}{webCmd}        = "rgb:rgb FF0000:rgb 00FF00:rgb 0000FF:rgb FFFFFF:rgb F7FF00:rgb 00FFFF:rgb F700FF:effect" if( !defined($attr{$name}{webCmd}) );
     
@@ -111,7 +111,8 @@ sub PlayBulbCandle_Define($$) {
     $hash->{helper}{sat}        = ReadingsVal($name,"sat",0); 
     $hash->{helper}{speed}      = ReadingsVal($name,"speed",120);
     
-    PlayBulbCandle($hash,"onoff",1);
+    
+    InternalTimer( gettimeofday()+15, "PlayBulbCandle_firstRun", $hash, 1 ) if( defined($attr{$name}{model}) and $init_done );
     
     return undef;
 }
@@ -128,6 +129,29 @@ sub PlayBulbCandle_Undef($$) {
     delete($modules{PlayBulbCandle}{defptr}{$mac});
 
     return undef;
+}
+
+sub PlayBulbCandle_Attr(@) {
+
+    my ( $cmd, $name, $attrName, $attrVal ) = @_;
+    my $hash = $defs{$name};
+    
+    my $orig = $attrVal;
+
+    if( $attrName eq "model" ) {
+	if( $cmd eq "set" ) {
+	    
+            PlayBulbCandle($hash,"statusRequest",undef) if( $init_done );
+        }
+    }
+}
+
+sub PlayBulbCandle_firstRun($) {
+
+    my ($hash)      = @_;
+    
+    RemoveInternalTimer($hash);
+    PlayBulbCandle($hash,"statusRequest",undef);
 }
 
 sub PlayBulbCandle_Set($$@) {
@@ -161,6 +185,7 @@ sub PlayBulbCandle_Set($$@) {
         
     } elsif( $cmd eq 'statusRequest' ) {
         $action = $cmd;
+        $arg    = undef;
     
     } else {
         my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg";
@@ -301,7 +326,7 @@ sub PlayBulbCandle_gattCharWrite($$$$$$$$$) {
     }
 }
 
-sub PlayBulbCandle_gattCharRead($$$$) {
+sub PlayBulbCandle_gattCharRead($$$) {
 
     my ($mac,$ac,$ae)       = @_;
 
@@ -360,7 +385,7 @@ sub PlayBulbCandle_stateOnOff($$) {
     return $state;
 }
 
-sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$$) {
+sub PlayBulbCandle_forRun_encodeJSON($$$$$$$$$$$) {
 
     my ($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab) = @_;
 
