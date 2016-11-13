@@ -114,6 +114,7 @@ sub PlayBulbCandle_Define($$) {
     
     InternalTimer( gettimeofday()+15, "PlayBulbCandle_firstRun", $hash, 1 ) if( defined($attr{$name}{model}) and $init_done );
     
+    $modules{NUKIBridge}{defptr}{$hash->{BTMAC}} = $hash;
     return undef;
 }
 
