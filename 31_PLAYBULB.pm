@@ -35,14 +35,15 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.9.0";
+my $version = "0.9.9";
 
 
 
 my %playbulbModels = (
         BTL300_v5       => {'aColor' => '0x16'    ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'},
         BTL300_v6       => {'aColor' => '0x19'    ,'aEffect' => '0x17'    ,'aBattery' => '0x22'},
-        BTL201_v2       => {'aColor' => '0x1b'    ,'aEffect' => '0x19'    ,'aBattery' => '0x22'},
+        BTL201_v2       => {'aColor' => '0x1b'    ,'aEffect' => '0x19'    ,'aBattery' => 'none'},
+        BTL505_v1       => {'aColor' => '0x23'    ,'aEffect' => '0x21'    ,'aBattery' => 'none'},
     );
 
 my %effects = ( 
@@ -73,7 +74,7 @@ sub PLAYBULB_Initialize($) {
     $hash->{DefFn}	    = "PLAYBULB_Define";
     $hash->{UndefFn}	    = "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2 ".
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1 ".
                               $readingFnAttributes;
 
 
@@ -248,7 +249,7 @@ sub PLAYBULB_Run($) {
     my $ae              = $data_json->{ae};
     my $ab              = $data_json->{ab};
     my $cmd             = $data_json->{cmd};
-    my $blevel;
+    my $blevel          = 1000;
     my $cc;
     my $ec;
     
@@ -267,7 +268,7 @@ sub PLAYBULB_Run($) {
         if( $cmd eq "statusRequest" ) {
         
             ###### Batteriestatus einlesen    
-            $blevel = PLAYBULB_readBattery($mac,$ab);
+            $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" );
             ###### Status ob An oder Aus
             $stateOnoff = PLAYBULB_stateOnOff($ccc,$cec);
             
@@ -288,8 +289,8 @@ sub PLAYBULB_Run($) {
 
         $stateOnoff = PLAYBULB_stateOnOff($cc,$ec);
     
-        ###### Batteriestatus einlesen    
-        $blevel = PLAYBULB_readBattery($mac,$ab);
+        ###### Batteriestatus einlesen
+        $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" );
         
         
         Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
@@ -451,10 +452,9 @@ sub PLAYBULB_Done($) {
     if( $response_json->{sat} eq "255" and $response_json->{rgb} eq "000000" ) {
         $color = "off"; } else { $color = "on"; }
     
-    
     readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, "color", "$color");
-    readingsBulkUpdate($hash, "battery", $response_json->{blevel});
+    readingsBulkUpdate($hash, "battery", $response_json->{blevel}) if( $response_json->{blevel} != 1000 );
     readingsBulkUpdate($hash, "onoff", $response_json->{stateOnoff});
     readingsBulkUpdate($hash, "sat", $response_json->{sat}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
     readingsBulkUpdate($hash, "rgb", $response_json->{rgb}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
