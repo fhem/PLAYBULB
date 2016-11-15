@@ -449,7 +449,8 @@ sub PLAYBULB_Done($) {
     
     
     if( $response_json->{stateOnoff} == 1 ) { $state = "on" } else { $state = "off" };
-    if( $response_json->{sat} eq "255" and $response_json->{rgb} eq "000000" ) {
+    if( ($response_json->{sat} eq "255" and $response_json->{rgb} eq "000000") or 
+        ($response_json->{sat} eq "0" and $response_json->{rgb} eq "ffffff") ) {
         $color = "off"; } else { $color = "on"; }
     
     readingsBeginUpdate($hash);
