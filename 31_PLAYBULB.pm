@@ -35,15 +35,16 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.9.9";
+my $version = "0.9.16";
 
 
 
 my %playbulbModels = (
-        BTL300_v5       => {'aColor' => '0x16'    ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'},
-        BTL300_v6       => {'aColor' => '0x19'    ,'aEffect' => '0x17'    ,'aBattery' => '0x22'},
-        BTL201_v2       => {'aColor' => '0x1b'    ,'aEffect' => '0x19'    ,'aBattery' => 'none'},
-        BTL505_v1       => {'aColor' => '0x23'    ,'aEffect' => '0x21'    ,'aBattery' => 'none'},
+        BTL300_v5       => {'aColor' => '0x16'  ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'   ,'aDevicename' => 'none'},
+        BTL300_v6       => {'aColor' => '0x19'  ,'aEffect' => '0x17'    ,'aBattery' => '0x22'   ,'aDevicename' => 'none'},
+        BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},
+        BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},
+        BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x29'},
     );
 
 my %effects = ( 
@@ -74,7 +75,7 @@ sub PLAYBULB_Initialize($) {
     $hash->{DefFn}	    = "PLAYBULB_Define";
     $hash->{UndefFn}	    = "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1 ".
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18 ".
                               $readingFnAttributes;
 
 
@@ -216,6 +217,7 @@ sub PLAYBULB($$$) {
     my $ac          =   $playbulbModels{$attr{$name}{model}}{aColor};
     my $ae          =   $playbulbModels{$attr{$name}{model}}{aEffect};
     my $ab          =   $playbulbModels{$attr{$name}{model}}{aBattery};
+    my $adname      =   $playbulbModels{$attr{$name}{model}}{aDevicename};
     
     if( $cmd eq "color" and $arg eq "off") {
         $rgb    = "000000";
@@ -226,7 +228,7 @@ sub PLAYBULB($$$) {
 
     BlockingKill($hash->{helper}{RUNNING_PID}) if(defined($hash->{helper}{RUNNING_PID}));
         
-    my $response_encode = PLAYBULB_forRun_encodeJSON($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab);
+    my $response_encode = PLAYBULB_forRun_encodeJSON($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab,$adname);
         
     $hash->{helper}{RUNNING_PID} = BlockingCall("PLAYBULB_Run", $name."|".$response_encode, "PLAYBULB_Done", 5, "PLAYBULB_Aborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
     Log3 $name, 4, "(Sub PLAYBULB - $name) - Starte Blocking Call";
@@ -249,6 +251,7 @@ sub PLAYBULB_Run($) {
     my $ae              = $data_json->{ae};
     my $ab              = $data_json->{ab};
     my $cmd             = $data_json->{cmd};
+    my $adname          = $data_json->{adname};
     my $blevel          = 1000;
     my $cc;
     my $ec;
@@ -269,8 +272,13 @@ sub PLAYBULB_Run($) {
         
             ###### Batteriestatus einlesen    
             $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" );
+            
             ###### Status ob An oder Aus
             $stateOnoff = PLAYBULB_stateOnOff($ccc,$cec);
+            
+            ###### Devicename ermitteln #######
+            # Sub für Devicename muß noch kommen, gleich mit lesen und/oder setzen
+            
             
             Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
             my $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$csat,$crgb,$ceffect,$cspeed);
@@ -368,9 +376,9 @@ sub PLAYBULB_readBattery($$) {
     my ($mac,$ab)   = @_;
     
     chomp(my @blevel  = split(": ",qx(gatttool -b $mac --char-read -a $ab)));
-    $blevel[1] =~ s/[ \t][ \t]*//g;
-    
-    return hex($blevel[1]);
+    my $blevel = substr(join("",split(" ",$blevel[1])),0,2);
+
+    return hex($blevel);
 }
 
 sub PLAYBULB_stateOnOff($$) {
@@ -387,9 +395,9 @@ sub PLAYBULB_stateOnOff($$) {
     return $state;
 }
 
-sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$) {
+sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$$) {
 
-    my ($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab) = @_;
+    my ($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab,$adname) = @_;
 
     my %data = (
         'cmd'           => $cmd,
@@ -402,7 +410,8 @@ sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$) {
         'stateEffect'   => $stateEffect,
         'ac'            => $ac,
         'ae'            => $ae,
-        'ab'            => $ab
+        'ab'            => $ab,
+        'adname'        => $adname
     );
     
     return encode_json \%data;
