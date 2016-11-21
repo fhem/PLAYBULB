@@ -35,16 +35,16 @@ use POSIX;
 use JSON;
 use Blocking;
 
-my $version = "0.9.19";
+my $version = "0.9.22";
 
 
 
 my %playbulbModels = (
-        BTL300_v5       => {'aColor' => '0x16'  ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'   ,'aDevicename' => '0x3'},
-        BTL300_v6       => {'aColor' => '0x19'  ,'aEffect' => '0x17'    ,'aBattery' => '0x22'   ,'aDevicename' => '0x3'},
-        BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},
-        BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},
-        BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},
+        BTL300_v5       => {'aColor' => '0x16'  ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'   ,'aDevicename' => '0x3'},   # Candle Firmware 5
+        BTL300_v6       => {'aColor' => '0x19'  ,'aEffect' => '0x17'    ,'aBattery' => '0x22'   ,'aDevicename' => '0x3'},   # Candle Firmware 6
+        BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Smart
+        BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},  # Stripe
+        BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},   # Garden
     );
 
 my %effects = ( 
@@ -76,13 +76,13 @@ sub PLAYBULB_Initialize($) {
     $hash->{UndefFn}	    = "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
     $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18 ".
-                              $readingFnAttributes;
+                            $readingFnAttributes;
 
 
 
     foreach my $d(sort keys %{$modules{PLAYBULB}{defptr}}) {
-	my $hash = $modules{PLAYBULB}{defptr}{$d};
-	$hash->{VERSION} 	= $version;
+        my $hash = $modules{PLAYBULB}{defptr}{$d};
+        $hash->{VERSION} 	= $version;
     }
 }
 
@@ -142,8 +142,8 @@ sub PLAYBULB_Attr(@) {
     my $orig = $attrVal;
 
     if( $attrName eq "model" ) {
-	if( $cmd eq "set" ) {
-	    
+        if( $cmd eq "set" ) {
+            
             PLAYBULB($hash,"statusRequest",undef) if( $init_done );
         }
     }
@@ -196,7 +196,8 @@ sub PLAYBULB_Set($$@) {
         $arg    = undef;
     
     } else {
-        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg deviceName";
+        my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg ";
+        $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" ) ;
         return "Unknown argument $cmd, choose one of $list";
     }
     
@@ -212,7 +213,8 @@ sub PLAYBULB($$$) {
     my $name    = $hash->{NAME};
     my $mac     = $hash->{BTMAC};
     my $dname;
-    $hash->{helper}{$cmd}   = $arg if( $cmd ne "deviceName" );
+    $hash->{helper}{$cmd}           = $arg if( $cmd ne "deviceName" );
+    $hash->{helper}{setDeviceName}  = 1 if( $cmd eq "deviceName" );
     
     my $rgb         =   $hash->{helper}{rgb};
     my $sat         =   sprintf("%02x", $hash->{helper}{sat});
@@ -264,6 +266,8 @@ sub PLAYBULB_Run($) {
     my $cc;
     my $ec;
     
+    my $response_encode;
+    
     Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Running nonBlocking";
 
 
@@ -289,7 +293,7 @@ sub PLAYBULB_Run($) {
             
             
             Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
-            my $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$csat,$crgb,$ceffect,$cspeed,$dname);
+            $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$csat,$crgb,$ceffect,$cspeed,$dname);
             return "$name|$response_encode";
         }
         
@@ -297,22 +301,24 @@ sub PLAYBULB_Run($) {
 
 
         ##### Schreiben der neuen Char values
-        PLAYBULB_gattCharWrite($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae);
+        PLAYBULB_gattCharWrite($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae) if( !defined($dname) );
         PLAYBULB_writeDevicename($mac,$adname,$dname) if( defined($dname) );
         
     
         ##### Statusabruf nach dem schreiben der neuen Char Values
-        ($cc,$ec,$sat,$rgb,$effect,$speed)  = PLAYBULB_gattCharRead($mac,$ac,$ae);
+        ($cc,$ec,$sat,$rgb,$effect,$speed)  = PLAYBULB_gattCharRead($mac,$ac,$ae) if( !defined($dname) );
+        $dname = PLAYBULB_readDevicename($mac,$adname) if( defined($dname) );
 
 
-        $stateOnoff = PLAYBULB_stateOnOff($cc,$ec);
+        $stateOnoff = PLAYBULB_stateOnOff($cc,$ec) if( !defined($dname) );
     
         ###### Batteriestatus einlesen
-        $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" );
+        $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" and !defined($dname) );
         
         
         Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
-        my $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$sat,$rgb,$effect,$speed,undef);
+        $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$sat,$rgb,$effect,$speed,undef) if( !defined($dname) );
+        $response_encode = PLAYBULB_forDone_encodeJSON(undef,undef,undef,undef,undef,undef,$dname) if( defined($dname) );
         return "$name|$response_encode";
     }
 
@@ -487,18 +493,22 @@ sub PLAYBULB_Done($) {
     my $response_json = decode_json($response);
     
     
-    if( $response_json->{stateOnoff} == 1 ) { $state = "on" } else { $state = "off" };
-    if( ($response_json->{sat} eq "255" and $response_json->{rgb} eq "000000") or 
-        ($response_json->{sat} eq "0" and $response_json->{rgb} eq "ffffff") ) {
-        $color = "off"; } else { $color = "on"; }
+    if( !defined($hash->{helper}{setDeviceName}) ) {
+        if( $response_json->{stateOnoff} == 1 ) { $state = "on" } else { $state = "off" } ;
+    
+    
+        if( ($response_json->{sat} eq "255" and $response_json->{rgb} eq "000000") or 
+            ($response_json->{sat} eq "0" and $response_json->{rgb} eq "ffffff") ) {
+            $color = "off"; } else { $color = "on"; }
+    }
     
     readingsBeginUpdate($hash);
-    readingsBulkUpdate($hash, "color", "$color");
-    readingsBulkUpdate($hash, "battery", $response_json->{blevel}) if( $response_json->{blevel} != 1000 );
+    readingsBulkUpdate($hash, "color", "$color") if( !defined($hash->{helper}{setDeviceName}) );
+    readingsBulkUpdate($hash, "battery", $response_json->{blevel}) if( $response_json->{blevel} != 1000 and !defined($hash->{helper}{setDeviceName}) );
     readingsBulkUpdate($hash, "deviceName", $response_json->{dname});
     readingsBulkUpdate($hash, "onoff", $response_json->{stateOnoff});
     readingsBulkUpdate($hash, "sat", $response_json->{sat}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
-    readingsBulkUpdate($hash, "rgb", $response_json->{rgb}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
+    readingsBulkUpdate($hash, "rgb", $response_json->{rgb}) if( $response_json->{stateOnoff} != 0 and $color ne "off" and !defined($hash->{helper}{setDeviceName}) );
     readingsBulkUpdate($hash, "effect", $response_json->{effect});
     readingsBulkUpdate($hash, "speed", $response_json->{speed});
     readingsBulkUpdate($hash, "state", $state);
@@ -506,9 +516,11 @@ sub PLAYBULB_Done($) {
 
     $hash->{helper}{onoff}  = $response_json->{stateOnoff};
     $hash->{helper}{sat}    = $response_json->{sat} if( $response_json->{stateOnoff} != 0 and $color ne "off" );
-    $hash->{helper}{rgb}    = $response_json->{rgb} if( $response_json->{stateOnoff} != 0 and $color ne "off" );
+    $hash->{helper}{rgb}    = $response_json->{rgb} if( $response_json->{stateOnoff} != 0 and $color ne "off" and !defined($hash->{helper}{setDeviceName}) );
     $hash->{helper}{effect} = $response_json->{effect};
     $hash->{helper}{speed}  = $response_json->{speed};
+    
+    delete $hash->{helper}{setDeviceName} if( defined($hash->{helper}{setDeviceName}) );
     
     
     Log3 $name, 4, "(Sub PLAYBULB_Done - $name) - Abschluss!";
