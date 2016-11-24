@@ -34,8 +34,9 @@ use POSIX;
 
 use JSON;
 use Blocking;
+use SetExtensions;
 
-my $version = "0.9.22";
+my $version = "0.9.27";
 
 
 
@@ -198,7 +199,8 @@ sub PLAYBULB_Set($$@) {
     } else {
         my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg ";
         $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" ) ;
-        return "Unknown argument $cmd, choose one of $list";
+        #return "Unknown argument $cmd, choose one of $list";
+        return SetExtensions($hash, $list, $name, $cmd, $arg);
     }
     
     PLAYBULB($hash,$action,$arg);
