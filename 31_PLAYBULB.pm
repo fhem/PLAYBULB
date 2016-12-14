@@ -36,7 +36,7 @@ use JSON;
 use Blocking;
 use SetExtensions;
 
-my $version = "0.9.27";
+my $version = "0.9.30";
 
 
 
@@ -46,6 +46,7 @@ my %playbulbModels = (
         BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Smart
         BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},  # Stripe
         BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},   # Garden
+        BTL100C_v10     => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Color LED
     );
 
 my %effects = ( 
@@ -76,7 +77,7 @@ sub PLAYBULB_Initialize($) {
     $hash->{DefFn}	    = "PLAYBULB_Define";
     $hash->{UndefFn}	    = "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18 ".
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18,BTL100C_v10 ".
                             $readingFnAttributes;
 
 
@@ -198,7 +199,7 @@ sub PLAYBULB_Set($$@) {
     
     } else {
         my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg ";
-        $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" ) ;
+        $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" or $attr{$name}{model} ne "BTL100C_v10" );
         #return "Unknown argument $cmd, choose one of $list";
         return SetExtensions($hash, $list, $name, $cmd, $arg);
     }
@@ -291,10 +292,10 @@ sub PLAYBULB_Run($) {
             $stateOnoff = PLAYBULB_stateOnOff($ccc,$cec);
             
             ###### Devicename ermitteln #######
-            my $dname = PLAYBULB_readDevicename($mac,$adname);
+            my $dname = PLAYBULB_readDevicename($mac,$adname) if( $adname ne "none" );
             
             
-            Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
+            Log3 $name, 4, "(Sub PLAYBULB_Run StatusRequest - $name) - Rückgabe an Auswertungsprogramm beginnt";
             $response_encode = PLAYBULB_forDone_encodeJSON($blevel,$stateOnoff,$csat,$crgb,$ceffect,$cspeed,$dname);
             return "$name|$response_encode";
         }
@@ -309,7 +310,7 @@ sub PLAYBULB_Run($) {
     
         ##### Statusabruf nach dem schreiben der neuen Char Values
         ($cc,$ec,$sat,$rgb,$effect,$speed)  = PLAYBULB_gattCharRead($mac,$ac,$ae) if( !defined($dname) );
-        $dname = PLAYBULB_readDevicename($mac,$adname) if( defined($dname) );
+        $dname = PLAYBULB_readDevicename($mac,$adname) if( defined($dname) and $adname ne "none" );
 
 
         $stateOnoff = PLAYBULB_stateOnOff($cc,$ec) if( !defined($dname) );
