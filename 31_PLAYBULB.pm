@@ -2,7 +2,7 @@
 # 
 # Developed with Kate
 #
-#  (c) 2016 Copyright: Marko Oldenburg (leongaultier at gmail dot com)
+#  (c) 2016-2017 Copyright: Marko Oldenburg (leongaultier at gmail dot com)
 #  All rights reserved
 #
 #  This script is free software; you can redistribute it and/or modify
@@ -36,8 +36,7 @@ use JSON;
 use Blocking;
 use SetExtensions;
 
-my $version = "0.9.30";
-
+my $version = "1.0.0";
 
 
 my %playbulbModels = (
@@ -66,6 +65,27 @@ my %effectsHex = (
         '04'            =>  'Candle',
         'ff'            =>  'none',
     );
+
+
+sub PLAYBULB_Initialize($);
+sub PLAYBULB_Define($$);
+sub PLAYBULB_Undef($$);
+sub PLAYBULB_Attr(@);
+sub PLAYBULB_firstRun($);
+sub PLAYBULB_Set($$@);
+sub PLAYBULB($$$);
+sub PLAYBULB_Run($);
+sub PLAYBULB_gattCharWrite($$$$$$$$$);
+sub PLAYBULB_gattCharRead($$$);
+sub PLAYBULB_readBattery($$);
+sub PLAYBULB_stateOnOff($$);
+sub PLAYBULB_readDevicename($$);
+sub PLAYBULB_writeDevicename($$$);
+sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$$$);
+sub PLAYBULB_forDone_encodeJSON($$$$$$$);
+sub PLAYBULB_Done($);
+sub PLAYBULB_Aborted($);
+
 
 
 
@@ -560,14 +580,66 @@ sub PLAYBULB_Aborted($) {
 
 =pod
 =item device
-=item summary    
-=item summary_DE 
+=item summary       Modul to control MiPow Playbulb products
+=item summary_DE    Modul zum steuern der MiPow Playbulb Produkte
 
 =begin html
 
 =end html
 
 =begin html_DE
+
+<a name="PLAYBULB"></a>
+<h3>MiPow Playbulb</h3>
+<ul>
+  <u><b>MiPow Playbulb - Zum steuern von MiPow Playbulb Produkten</b></u>
+  <br>
+  Mit diesem Modul ist es möglich die MiPow Playbulb Produkte über FHEM zu steuern</br>
+  Voraussetzung hierfür ist ein BT LE 4.0 Empfänger/Sender (USB Stick), sowie die Programme gatttool und hcitool  (apt-get install bluez)</br>
+  
+  <br><br>
+  <a name="XiaomiFlowerSensdefine"></a>
+  <b>Define</b>
+  <ul><br>
+    <code>define &lt;name&gt; XiaomiFlowerSens &lt;BT-MAC&gt;</code>
+    <br><br>
+    Example:
+    <ul><br>
+      <code>define Weihnachtskaktus XiaomiFlowerSens C4:7C:8D:62:42:6F</code><br>
+    </ul>
+    <br>
+    This statement creates a XiaomiFlowerSens with the name Weihnachtskaktus and the Bluetooth Mac C4:7C:8D:62:42:6F.<br>
+    After the device has been created, the current data of the Xiaomi Flower Monitor is automatically read from the device.
+  </ul>
+  <br><br>
+  <a name="XiaomiFlowerSensreadings"></a>
+  <b>Readings</b>
+  <ul>
+    <li>state - Status of the flower sensor or error message if any errors.</li>
+    <li>battery - current battery state dependent on batteryLevel.</li>
+    <li>batteryLevel - current battery level in percent.</li>
+    <li>fertility - Values for the fertilizer content</li>
+    <li>firmware - current device firmware</li>
+    <li>lux - current light intensity</li>
+    <li>moisture - current moisture content</li>
+    <li>temperature - current temperature</li>
+  </ul>
+  <br><br>
+  <a name="XiaomiFlowerSensset"></a>
+  <b>Set</b>
+  <ul>
+    <li>statusRequest - retrieves the current state of the Xiaomi Flower Monitor.</li>
+    <br>
+  </ul>
+  <br><br>
+  <a name="NUKIDeviceattribut"></a>
+  <b>Attributes</b>
+  <ul>
+    <li>disable - disables the Nuki device</li>
+    <li>interval - interval in seconds for statusRequest</li>
+    <br>
+  </ul>
+</ul>
 
 =end html_DE
 
