@@ -36,7 +36,7 @@ use JSON;
 use Blocking;
 use SetExtensions;
 
-my $version = "0.9.30";
+my $version = "0.9.31";
 
 
 
@@ -47,6 +47,7 @@ my %playbulbModels = (
         BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},  # Stripe
         BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},   # Garden
         BTL100C_v10     => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Color LED
+	BTL201M_V16    => {'aColor' => '0x25'  ,'aEffect' => '0x23'    ,'aBattery' => '0x30'   ,'aDevicename' => '0x7'},  # Smart (1/2017)
     );
 
 my %effects = ( 
@@ -77,7 +78,7 @@ sub PLAYBULB_Initialize($) {
     $hash->{DefFn}	    = "PLAYBULB_Define";
     $hash->{UndefFn}	    = "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18,BTL100C_v10 ".
+    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18,BTL100C_v10,BTL201M_V16 ".
                             $readingFnAttributes;
 
 
