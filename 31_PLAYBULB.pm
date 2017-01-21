@@ -36,13 +36,17 @@ use JSON;
 use Blocking;
 use SetExtensions;
 
+
 my $version = "1.0.0";
+
+
 
 
 my %playbulbModels = (
         BTL300_v5       => {'aColor' => '0x16'  ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'   ,'aDevicename' => '0x3'},   # Candle Firmware 5
         BTL300_v6       => {'aColor' => '0x19'  ,'aEffect' => '0x17'    ,'aBattery' => '0x22'   ,'aDevicename' => '0x3'},   # Candle Firmware 6
         BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Smart
+        BTL201M_V16     => {'aColor' => '0x25'  ,'aEffect' => '0x23'    ,'aBattery' => '0x30'   ,'aDevicename' => '0x7'},   # Smart (1/2017)
         BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},  # Stripe
         BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},   # Garden
         BTL100C_v10     => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Color LED
@@ -73,8 +77,8 @@ sub PLAYBULB_Undef($$);
 sub PLAYBULB_Attr(@);
 sub PLAYBULB_firstRun($);
 sub PLAYBULB_Set($$@);
-sub PLAYBULB($$$);
-sub PLAYBULB_Run($);
+sub PLAYBULB_Run($$$);
+sub PLAYBULB_BlockingRun($);
 sub PLAYBULB_gattCharWrite($$$$$$$$$);
 sub PLAYBULB_gattCharRead($$$);
 sub PLAYBULB_readBattery($$);
@@ -83,8 +87,8 @@ sub PLAYBULB_readDevicename($$);
 sub PLAYBULB_writeDevicename($$$);
 sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$$$);
 sub PLAYBULB_forDone_encodeJSON($$$$$$$);
-sub PLAYBULB_Done($);
-sub PLAYBULB_Aborted($);
+sub PLAYBULB_BlockingDone($);
+sub PLAYBULB_BlockingAborted($);
 
 
 
@@ -95,9 +99,9 @@ sub PLAYBULB_Initialize($) {
 
     $hash->{SetFn}	    = "PLAYBULB_Set";
     $hash->{DefFn}	    = "PLAYBULB_Define";
-    $hash->{UndefFn}	    = "PLAYBULB_Undef";
+    $hash->{UndefFn}	= "PLAYBULB_Undef";
     $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	    = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL505_v1,BTL400M_v18,BTL100C_v10 ".
+    $hash->{AttrList} 	= "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL201M_V16,BTL505_v1,BTL400M_v18,BTL100C_v10 ".
                             $readingFnAttributes;
 
 
@@ -136,7 +140,15 @@ sub PLAYBULB_Define($$) {
     $hash->{helper}{speed}      = ReadingsVal($name,"speed",120);
     
     
-    InternalTimer( gettimeofday()+15, "PLAYBULB_firstRun", $hash, 1 ) if( defined($attr{$name}{model}) and $init_done );
+    if( $init_done ) {
+    
+        PLAYBULB_firstRun($hash);
+        
+    } else {
+    
+        InternalTimer( gettimeofday()+30, "PLAYBULB_firstRun", $hash, 1 ) ;
+    }
+    
     
     $modules{PLAYBULB}{defptr}{$hash->{BTMAC}} = $hash;
     return undef;
@@ -174,9 +186,11 @@ sub PLAYBULB_Attr(@) {
 sub PLAYBULB_firstRun($) {
 
     my ($hash)      = @_;
+    my $name        = $hash->{NAME};
     
     RemoveInternalTimer($hash);
-    PLAYBULB($hash,"statusRequest",undef);
+    
+    PLAYBULB_Run($hash,"statusRequest",undef);
 }
 
 sub PLAYBULB_Set($$@) {
@@ -220,20 +234,25 @@ sub PLAYBULB_Set($$@) {
     } else {
         my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg ";
         $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" or $attr{$name}{model} ne "BTL100C_v10" );
-        #return "Unknown argument $cmd, choose one of $list";
         return SetExtensions($hash, $list, $name, $cmd, $arg);
     }
     
-    PLAYBULB($hash,$action,$arg);
+    PLAYBULB_Run($hash,$action,$arg);
     
     return undef;
 }
 
-sub PLAYBULB($$$) {
+sub PLAYBULB_Run($$$) {
 
     my ( $hash, $cmd, $arg ) = @_;
     
     my $name    = $hash->{NAME};
+    
+    unless( defined($attr{$name}{model}) ) {
+        readingsSingleUpdate($hash,'state','set attribut model',1);
+        return;
+    }
+    
     my $mac     = $hash->{BTMAC};
     my $dname;
     $hash->{helper}{$cmd}           = $arg if( $cmd ne "deviceName" );
@@ -262,11 +281,11 @@ sub PLAYBULB($$$) {
         
     my $response_encode = PLAYBULB_forRun_encodeJSON($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab,$adname,$dname);
         
-    $hash->{helper}{RUNNING_PID} = BlockingCall("PLAYBULB_Run", $name."|".$response_encode, "PLAYBULB_Done", 5, "PLAYBULB_Aborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
-    Log3 $name, 4, "(Sub PLAYBULB - $name) - Starte Blocking Call";
+    $hash->{helper}{RUNNING_PID} = BlockingCall("PLAYBULB_BlockingRun", $name."|".$response_encode, "PLAYBULB_BlockingDone", 5, "PLAYBULB_BlockingAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
+    Log3 $name, 4, "(Sub PLAYBULB - $name) - Call BlockingRun";
 }
 
-sub PLAYBULB_Run($) {
+sub PLAYBULB_BlockingRun($) {
 
     my ($string)        = @_;
     my ($name,$data)    = split("\\|", $string);
@@ -492,7 +511,7 @@ sub PLAYBULB_forDone_encodeJSON($$$$$$$) {
     return encode_json \%response;
 }
 
-sub PLAYBULB_Done($) {
+sub PLAYBULB_BlockingDone($) {
 
     my ($string) = @_;
     my ($name,$response)       = split("\\|",$string);
@@ -549,7 +568,7 @@ sub PLAYBULB_Done($) {
     Log3 $name, 4, "(Sub PLAYBULB_Done - $name) - Abschluss!";
 }
 
-sub PLAYBULB_Aborted($) {
+sub PLAYBULB_BlockingAborted($) {
 
     my ($hash) = @_;
     my $name = $hash->{NAME};
