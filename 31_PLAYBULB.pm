@@ -178,7 +178,7 @@ sub PLAYBULB_Attr(@) {
     if( $attrName eq "model" ) {
         if( $cmd eq "set" ) {
             
-            PLAYBULB($hash,"statusRequest",undef) if( $init_done );
+            PLAYBULB_Run($hash,"statusRequest",undef) if( $init_done );
         }
     }
 }
