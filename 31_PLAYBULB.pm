@@ -37,7 +37,7 @@ use Blocking;
 use SetExtensions;
 
 
-my $version = "1.0.1";
+my $version = "1.0.3";
 
 
 
@@ -138,6 +138,7 @@ sub PLAYBULB_Define($$) {
     $hash->{helper}{rgb}        = ReadingsVal($name,"rgb","ff0000"); 
     $hash->{helper}{sat}        = ReadingsVal($name,"sat",0); 
     $hash->{helper}{speed}      = ReadingsVal($name,"speed",120);
+    $hash->{helper}{color}      = ReadingsVal($name,"color","on"); 
     
     
     if( $init_done ) {
