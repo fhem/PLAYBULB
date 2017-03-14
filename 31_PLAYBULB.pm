@@ -5,6 +5,10 @@
 #  (c) 2016-2017 Copyright: Marko Oldenburg (leongaultier at gmail dot com)
 #  All rights reserved
 #
+#   Special thanks goes to comitters:
+#       - Christoph (pc1246) commandref writer
+#
+#
 #  This script is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 2 of the License, or
@@ -37,7 +41,7 @@ use Blocking;
 use SetExtensions;
 
 
-my $version = "1.0.3";
+my $version = "1.2.0";
 
 
 
@@ -147,7 +151,7 @@ sub PLAYBULB_Define($$) {
         
     } else {
     
-        InternalTimer( gettimeofday()+30, "PLAYBULB_firstRun", $hash, 1 ) ;
+        InternalTimer( gettimeofday()+30, "PLAYBULB_firstRun", $hash, 0 ) ;
     }
     
     
@@ -605,61 +609,144 @@ sub PLAYBULB_BlockingAborted($) {
 
 =begin html
 
+<a name="PLAYBULB"></a>
+<h3>MiPow Playbulb</h3>
+<p><span style="text-decoration: underline;"><strong>PLAYBULB -Smart Light from MIPOW.COM</strong></span></p>
+<p>This module integrates different smart lights from MIPOW into FHEM and displays several settings</p>
+<p>&nbsp;</p>
+<p><a name="PLAYBULBdefine"></a><strong>Define</strong><br /><code>define &lt;name&gt; PLAYBULB &lt;MAC-ADDRESS&gt;</code></p>
+<p>Example: <code>define PlaybulbCandle PLAYBULB 0B:0B:0C:D0:E0:F0</code></p>
+<p>&nbsp;</p>
+<p>With this command a new PLAYBULB device in a room called PLAYBULB is created. The parameter &lt;MAC-ADDRESS&gt; defines the bluetooth MAC address of your mipow smart light.</p>
+<p>&nbsp;</p>
+<p style="padding-left: 90px;"><strong>pre-requesites</strong>: a BT LE 4.0 key and a working bluez installation or equivalent is necessary. (find a good guide at <a href="http://www.elinux.org/RPi_Bluetooth_LE)">http://www.elinux.org/RPi_Bluetooth_LE)</a></p>
+<p style="padding-left: 90px;">It seems like the devices accept only one active connection.</p>
+<p><br /><a name="PLAYBULBreadings"></a><strong>Readings</strong></p>
+<ul>
+<ul>
+<ul>
+<li>battery - percentage of batterylevel</li>
+<li>color - indicates if colormode is on or off</li>
+<li>devicename - given name of the device</li>
+<li>effect - indicates which effect is selected (Flash; Pulse; RainbowJump; RainbowFade; Candle; none)</li>
+<li>onoff - indicates if the device is turned on (1) or off (0)</li>
+<li>rgb - shows the selected color in hex by rgb (example: FF0000 is full red)</li>
+<li>sat - shows the selected saturation from 0 to 255 (seems to be inverted; 0 is full saturation)</li>
+<li>speed - shows the selected effect speed (possible: 20; 70; 120; 170)</li>
+<li>state - current state of PLAYBULB device</li>
+</ul>
+</ul>
+</ul>
+<p><a name="PLAYBULBset"></a><strong>Set</strong></p>
+<ul>
+<ul>
+<ul>
+<li>on - turns device on</li>
+<li>off - turns device off</li>
+<li>rgb - colorpicker,RGB; gives the possibility to set any hue, saturation, brightness</li>
+<li>sat - saturation slider from 0 to 255 steps 5</li>
+<li>effect - Flash,Pulse,RainbowJump,RainbowFade,Candle,none; activates the selected effect</li>
+<li>speed - slider: values are 170, 120, 70, 20</li>
+<li>color - on,of; switches the device to rgb or white</li>
+<li>statusRequest - is necessary to request state of the device</li>
+<li>deviceName - changes the name of the bluetoothdevice e.g. "PlaybulbCandle"</li>
+</ul>
+</ul>
+</ul>
+<p><br /><strong>Get na</strong></p>
+<p>&nbsp;</p>
+<p><strong>Attributes&nbsp; </strong></p>
+<ul>
+<ul>
+<ul>
+<li>model<br />BTL300_v5&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 5<br />BTL300_v6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 6<br />BTL201_v2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Smart<br />BTL201M_V16&nbsp; # Smart (1/2017)<br />BTL505_v1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Stripe<br />BTL400M_v18&nbsp; # Garden<br />BTL100C_v10&nbsp; # Color LED</li>
+</ul>
+</ul>
+</ul>
+<p><br /><a name="PLAYBULBstate"></a><strong>state</strong></p>
+<ul>
+<ul>
+<ul>
+<li>set attribut model&nbsp;- is shown after initial define</li>
+<li>on - device is on</li>
+<li>off - device is off</li>
+<li>unreachable - connection to device lost</li>
+</ul>
+</ul>
+</ul>
+<p><br /><br /><br /><span style="text-decoration: underline;"><strong>Further examples and readings:</strong></span><br /><a href="https://forum.fhem.de/index.php/topic,60829.msg522226.html#msg522226">Forum thread (german only)</a><br /><br /></p>
+
 =end html
 
 =begin html_DE
 
 <a name="PLAYBULB"></a>
 <h3>MiPow Playbulb</h3>
+<p><span style="text-decoration: underline;"><strong>PLAYBULB -Smart Light von MIPOW.COM</strong></span></p>
+<p>Dieses Modul integriert diverse Smart Leuchten von MIPOW in FHEM und zeigt ihre Einstellungen an.</p>
+<p>&nbsp;</p>
+<p><a name="PLAYBULBdefine"></a><strong>Define</strong><br /><code>define &lt;name&gt; PLAYBULB &lt;MAC-ADDRESS&gt;</code></p>
+<p>Beispiel: <code>define PlaybulbCandle PLAYBULB 0B:0B:0C:D0:E0:F0</code></p>
+<p>&nbsp;</p>
+<p>Mit diesem Kommando wird ein neues PLAYBULB Device im Raum PLAYBULB angelegt. Der Parameter &lt;MAC-ADDRESS&gt; definiert die Bluetooth MAC Address der Mipow Smart Leuchte.</p>
+<p>&nbsp;</p>
+<p style="padding-left: 90px;"><strong>Vorbedingungen</strong>: Es wird ein Bluetooth LE 4.0 Stick, sowie eine funktionierende bluez Installation oder aehnlich vorausgesetzt. (Eine gute Anleitung findedsich hier: <a href="http://www.elinux.org/RPi_Bluetooth_LE)">http://www.elinux.org/RPi_Bluetooth_LE)</a></p>
+<p style="padding-left: 90px;">Derzeit sieht es so aus, als ob die Devices nur eine aktive Verbindung akzeptieren.</p>
+<p><br /><a name="PLAYBULBreadings"></a><strong>Readings</strong></p>
 <ul>
-  <u><b>MiPow Playbulb - Zum steuern von MiPow Playbulb Produkten</b></u>
-  <br>
-  Mit diesem Modul ist es möglich die MiPow Playbulb Produkte über FHEM zu steuern</br>
-  Voraussetzung hierfür ist ein BT LE 4.0 Empfänger/Sender (USB Stick), sowie die Programme gatttool und hcitool  (apt-get install bluez)</br>
-  
-  <br><br>
-  <a name="XiaomiFlowerSensdefine"></a>
-  <b>Define</b>
-  <ul><br>
-    <code>define &lt;name&gt; XiaomiFlowerSens &lt;BT-MAC&gt;</code>
-    <br><br>
-    Example:
-    <ul><br>
-      <code>define Weihnachtskaktus XiaomiFlowerSens C4:7C:8D:62:42:6F</code><br>
-    </ul>
-    <br>
-    This statement creates a XiaomiFlowerSens with the name Weihnachtskaktus and the Bluetooth Mac C4:7C:8D:62:42:6F.<br>
-    After the device has been created, the current data of the Xiaomi Flower Monitor is automatically read from the device.
-  </ul>
-  <br><br>
-  <a name="XiaomiFlowerSensreadings"></a>
-  <b>Readings</b>
-  <ul>
-    <li>state - Status of the flower sensor or error message if any errors.</li>
-    <li>battery - current battery state dependent on batteryLevel.</li>
-    <li>batteryLevel - current battery level in percent.</li>
-    <li>fertility - Values for the fertilizer content</li>
-    <li>firmware - current device firmware</li>
-    <li>lux - current light intensity</li>
-    <li>moisture - current moisture content</li>
-    <li>temperature - current temperature</li>
-  </ul>
-  <br><br>
-  <a name="XiaomiFlowerSensset"></a>
-  <b>Set</b>
-  <ul>
-    <li>statusRequest - retrieves the current state of the Xiaomi Flower Monitor.</li>
-    <br>
-  </ul>
-  <br><br>
-  <a name="NUKIDeviceattribut"></a>
-  <b>Attributes</b>
-  <ul>
-    <li>disable - disables the Nuki device</li>
-    <li>interval - interval in seconds for statusRequest</li>
-    <br>
-  </ul>
+<ul>
+<ul>
+<li>battery - Batterielevel in Prozent</li>
+<li>color - Zeigt an ob der Farbmodus an oder aus ist</li>
+<li>devicename - Geraetename</li>
+<li>effect - Zeigt an, welcher effect ausgewaehlt ist: (Flash; Pulse; RainbowJump; RainbowFade; Candle; none)</li>
+<li>onoff - Zeigt an, ob das Geraet an (1) oder aus (0) ist</li>
+<li>rgb - Zeigt die gewaehlte Farbe in HEX vom Typ rgb (Beispiel: FF0000 ist satt rot)</li>
+<li>sat - Zeigt die gewaehlte Saettigung von 0 bis 255 (scheint invertiert zu sein; 0 ist volle Saettigung)</li>
+<li>speed - Zeigt die gewaehlte Effektgeschwindigkeit (moeglich sind: 20; 70; 120; 170)</li>
+<li>state - Aktueller Zustand des Devices</li>
 </ul>
+</ul>
+</ul>
+<p><a name="PLAYBULBset"></a><strong>Set</strong></p>
+<ul>
+<ul>
+<ul>
+<li>on - Schaltet das Geraet ein</li>
+<li>off - Schaltet das Geraet aus</li>
+<li>rgb - Farbwaehler,RGB; ermoeglicht jede Farbe, Saettigung und Helligkeit einzustellen</li>
+<li>sat - Schieber zur Einstellung der Saettigungvon 0 bis 255, Schrittweite 5</li>
+<li>effect - Flash,Pulse,RainbowJump,RainbowFade,Candle,none; aktiviert den gewaehlten Effekt</li>
+<li>speed - Schieberegler: Werte sind 170, 120, 70, 20</li>
+<li>color - on,of; Schaltet das Geraet auf RGB oder weiss</li>
+<li>statusRequest - Ist notwendig, um den Zustand des Geraetes abzufragen</li>
+<li>deviceName - Aendert den Namen des Bluetoothdevice z.B. "PlaybulbCandle"</li>
+</ul>
+</ul>
+</ul>
+<p><br /><strong>Get na</strong></p>
+<p>&nbsp;</p>
+<p><strong>Attributes&nbsp; </strong></p>
+<ul>
+<ul>
+<ul>
+<li>model<br />BTL300_v5&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 5<br />BTL300_v6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 6<br />BTL201_v2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Smart<br />BTL201M_V16&nbsp; # Smart (1/2017)<br />BTL505_v1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Stripe<br />BTL400M_v18&nbsp; # Garden<br />BTL100C_v10&nbsp; # Color LED</li>
+</ul>
+</ul>
+</ul>
+<p><br /><a name="PLAYBULBstate"></a><strong>state</strong></p>
+<ul>
+<ul>
+<ul>
+<li>set attribut model&nbsp;- wird nach der Erstdefinition angezeigt</li>
+<li>on - Device ist an</li>
+<li>off - Device ist aus</li>
+<li>unreachable - Verbindung zum device verloren</li>
+</ul>
+</ul>
+</ul>
+<p><br /><br /><br /><span style="text-decoration: underline;"><strong>Weitere Beispiel und readings:</strong></span><br /><a href="https://forum.fhem.de/index.php/topic,60829.msg522226.html#msg522226">Forum thread</a></p>
+<p>&nbsp;</p>
 
 =end html_DE
 
