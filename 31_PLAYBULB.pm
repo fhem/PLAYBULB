@@ -5,6 +5,10 @@
 #  (c) 2016-2017 Copyright: Marko Oldenburg (leongaultier at gmail dot com)
 #  All rights reserved
 #
+#   Special thanks goes to comitters:
+#       - Christoph (pc1246) commandref writer
+#
+#
 #  This script is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
 #  the Free Software Foundation; either version 2 of the License, or
@@ -37,7 +41,7 @@ use Blocking;
 use SetExtensions;
 
 
-my $version = "1.0.2";
+my $version = "1.2.7";
 
 
 
@@ -45,10 +49,12 @@ my $version = "1.0.2";
 my %playbulbModels = (
         BTL300_v5       => {'aColor' => '0x16'  ,'aEffect' => '0x14'    ,'aBattery' => '0x1f'   ,'aDevicename' => '0x3'},   # Candle Firmware 5
         BTL300_v6       => {'aColor' => '0x19'  ,'aEffect' => '0x17'    ,'aBattery' => '0x22'   ,'aDevicename' => '0x3'},   # Candle Firmware 6
+        BTL305_v14      => {'aColor' => '0x29'  ,'aEffect' => '0x27'    ,'aBattery' => '0x22'   ,'aDevicename' => '0x3'},   # Candle S Firmware 6
         BTL201_v2       => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Smart
         BTL201M_V16     => {'aColor' => '0x25'  ,'aEffect' => '0x23'    ,'aBattery' => 'none'   ,'aDevicename' => '0x7'},   # Smart (1/2017)
         BTL505_v1       => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => 'none'   ,'aDevicename' => '0x29'},  # Stripe
         BTL400M_v18     => {'aColor' => '0x23'  ,'aEffect' => '0x21'    ,'aBattery' => '0x2e'   ,'aDevicename' => '0x7'},   # Garden
+        BTL400M_v37     => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => '0x24'   ,'aDevicename' => '0x7'},   # Garden neue Version
         BTL100C_v10     => {'aColor' => '0x1b'  ,'aEffect' => '0x19'    ,'aBattery' => 'none'   ,'aDevicename' => 'none'},  # Color LED
     );
 
@@ -79,12 +85,12 @@ sub PLAYBULB_firstRun($);
 sub PLAYBULB_Set($$@);
 sub PLAYBULB_Run($$$);
 sub PLAYBULB_BlockingRun($);
-sub PLAYBULB_gattCharWrite($$$$$$$$$);
-sub PLAYBULB_gattCharRead($$$);
-sub PLAYBULB_readBattery($$);
+sub PLAYBULB_gattCharWrite($$$$$$$$$$);
+sub PLAYBULB_gattCharRead($$$$);
+sub PLAYBULB_readBattery($$$);
 sub PLAYBULB_stateOnOff($$);
-sub PLAYBULB_readDevicename($$);
-sub PLAYBULB_writeDevicename($$$);
+sub PLAYBULB_readDevicename($$$);
+sub PLAYBULB_writeDevicename($$$$);
 sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$$$);
 sub PLAYBULB_forDone_encodeJSON($$$$$$$);
 sub PLAYBULB_BlockingDone($);
@@ -97,18 +103,19 @@ sub PLAYBULB_Initialize($) {
 
     my ($hash) = @_;
 
-    $hash->{SetFn}	    = "PLAYBULB_Set";
-    $hash->{DefFn}	    = "PLAYBULB_Define";
-    $hash->{UndefFn}	= "PLAYBULB_Undef";
-    $hash->{AttrFn}	    = "PLAYBULB_Attr";
-    $hash->{AttrList} 	= "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL201M_V16,BTL505_v1,BTL400M_v18,BTL100C_v10 ".
+    $hash->{SetFn}      = "PLAYBULB_Set";
+    $hash->{DefFn}      = "PLAYBULB_Define";
+    $hash->{UndefFn}    = "PLAYBULB_Undef";
+    $hash->{AttrFn}     = "PLAYBULB_Attr";
+    $hash->{AttrList}   = "model:BTL300_v5,BTL300_v6,BTL201_v2,BTL201M_V16,BTL505_v1,BTL400M_v18,BTL400M_v37,BTL100C_v10,BTL305_v14 ".
+                            "sshHost ".
                             $readingFnAttributes;
 
 
 
     foreach my $d(sort keys %{$modules{PLAYBULB}{defptr}}) {
         my $hash = $modules{PLAYBULB}{defptr}{$d};
-        $hash->{VERSION} 	= $version;
+        $hash->{VERSION}    = $version;
     }
 }
 
@@ -120,24 +127,24 @@ sub PLAYBULB_Define($$) {
     return "too few parameters: define <name> PLAYBULB <BTMAC>" if( @a != 3 );
     
 
-    my $name    	= $a[0];
-    my $mac     	= $a[2];
+    my $name            = $a[0];
+    my $mac             = $a[2];
     
-    $hash->{BTMAC} 	= $mac;
-    $hash->{VERSION} 	= $version;
+    $hash->{BTMAC}      = $mac;
+    $hash->{VERSION}    = $version;
     
     
-    $modules{PLAYBULB}{defptr}{$hash->{BTMAC}} = $hash;
     readingsSingleUpdate ($hash,"state","Unknown", 0);
     $attr{$name}{room}          = "PLAYBULB" if( !defined($attr{$name}{room}) );
     $attr{$name}{devStateIcon}  = "unreachable:light_question" if( !defined($attr{$name}{devStateIcon}) );
     $attr{$name}{webCmd}        = "rgb:rgb FF0000:rgb 00FF00:rgb 0000FF:rgb FFFFFF:rgb F7FF00:rgb 00FFFF:rgb F700FF:effect" if( !defined($attr{$name}{webCmd}) );
     
-    $hash->{helper}{effect}     = ReadingsVal($name,"effect","none"); 
+    $hash->{helper}{effect}     = ReadingsVal($name,"effect","Candle"); 
     $hash->{helper}{onoff}      = ReadingsVal($name,"onoff",0); 
     $hash->{helper}{rgb}        = ReadingsVal($name,"rgb","ff0000"); 
     $hash->{helper}{sat}        = ReadingsVal($name,"sat",0); 
     $hash->{helper}{speed}      = ReadingsVal($name,"speed",120);
+    $hash->{helper}{color}      = ReadingsVal($name,"color","on"); 
     
     
     if( $init_done ) {
@@ -146,7 +153,7 @@ sub PLAYBULB_Define($$) {
         
     } else {
     
-        InternalTimer( gettimeofday()+30, "PLAYBULB_firstRun", $hash, 1 ) ;
+        InternalTimer( gettimeofday()+30, "PLAYBULB_firstRun", $hash, 0 ) ;
     }
     
     
@@ -158,12 +165,11 @@ sub PLAYBULB_Undef($$) {
 
     my ( $hash, $arg ) = @_;
     
-    my $mac = $hash->{BTMAC};
     my $name = $hash->{NAME};
     
     
     Log3 $name, 3, "PLAYBULB ($name) - undefined";
-    delete($modules{PLAYBULB}{defptr}{$mac});
+    delete($modules{PLAYBULB}{defptr}{$hash->{BTMAC}});
 
     return undef;
 }
@@ -191,6 +197,9 @@ sub PLAYBULB_firstRun($) {
     RemoveInternalTimer($hash);
     
     PLAYBULB_Run($hash,"statusRequest",undef);
+    
+    ### Für kurze Zeit da neue Readings
+    CommandDeleteReading(undef,"$name battery") if( defined(ReadingsVal($name,'battery',undef)) );
 }
 
 sub PLAYBULB_Set($$@) {
@@ -233,7 +242,7 @@ sub PLAYBULB_Set($$@) {
     
     } else {
         my $list = "on:noArg off:noArg rgb:colorpicker,RGB sat:slider,0,5,255 effect:Flash,Pulse,RainbowJump,RainbowFade,Candle,none speed:slider,170,50,20 color:on,off statusRequest:noArg ";
-        $list .= "deviceName " if( $attr{$name}{model} ne "BTL400M_v18" or $attr{$name}{model} ne "BTL100C_v10" );
+        $list .= "deviceName " if( defined($attr{$name}{model}) and ($attr{$name}{model} ne "BTL400M_v18" or $attr{$name}{model} ne "BTL100C_v10" or $attr{$name}{model} ne "BTL400M_v37") );
         return SetExtensions($hash, $list, $name, $cmd, $arg);
     }
     
@@ -263,7 +272,7 @@ sub PLAYBULB_Run($$$) {
     my $effect      =   $hash->{helper}{effect};
     my $speed       =   sprintf("%02x", $hash->{helper}{speed});
     my $stateOnoff  =   $hash->{helper}{onoff};
-    my $stateEffect =   ReadingsVal($name,"effect","none");
+    my $stateEffect =   ReadingsVal($name,"effect","Candle");
     my $ac          =   $playbulbModels{$attr{$name}{model}}{aColor};
     my $ae          =   $playbulbModels{$attr{$name}{model}}{aEffect};
     my $ab          =   $playbulbModels{$attr{$name}{model}}{aBattery};
@@ -281,7 +290,7 @@ sub PLAYBULB_Run($$$) {
         
     my $response_encode = PLAYBULB_forRun_encodeJSON($cmd,$mac,$stateOnoff,$sat,$rgb,$effect,$speed,$stateEffect,$ac,$ae,$ab,$adname,$dname);
         
-    $hash->{helper}{RUNNING_PID} = BlockingCall("PLAYBULB_BlockingRun", $name."|".$response_encode, "PLAYBULB_BlockingDone", 5, "PLAYBULB_BlockingAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
+    $hash->{helper}{RUNNING_PID} = BlockingCall("PLAYBULB_BlockingRun", $name."|".$response_encode, "PLAYBULB_BlockingDone", 10, "PLAYBULB_BlockingAborted", $hash) unless(exists($hash->{helper}{RUNNING_PID}));
     Log3 $name, 4, "(Sub PLAYBULB - $name) - Call BlockingRun";
 }
 
@@ -316,7 +325,7 @@ sub PLAYBULB_BlockingRun($) {
 
     ##### Abruf des aktuellen Status
     #### das c vor den bekannten Variablen steht für current
-    my ($ccc,$cec,$csat,$crgb,$ceffect,$cspeed)  = PLAYBULB_gattCharRead($mac,$ac,$ae);
+    my ($ccc,$cec,$csat,$crgb,$ceffect,$cspeed)  = PLAYBULB_gattCharRead($name,$mac,$ac,$ae);
 
     if( defined($ccc) and defined($cec) ) {
 
@@ -325,13 +334,13 @@ sub PLAYBULB_BlockingRun($) {
         if( $cmd eq "statusRequest" ) {
         
             ###### Batteriestatus einlesen    
-            $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" );
+            $blevel = PLAYBULB_readBattery($name,$mac,$ab) if( $ab ne "none" );
             
             ###### Status ob An oder Aus
             $stateOnoff = PLAYBULB_stateOnOff($ccc,$cec);
             
             ###### Devicename ermitteln #######
-            my $dname = PLAYBULB_readDevicename($mac,$adname) if( $adname ne "none" );
+            my $dname = PLAYBULB_readDevicename($name,$mac,$adname) if( $adname ne "none" );
             
             
             Log3 $name, 4, "(Sub PLAYBULB_Run StatusRequest - $name) - Rückgabe an Auswertungsprogramm beginnt";
@@ -343,19 +352,19 @@ sub PLAYBULB_BlockingRun($) {
 
 
         ##### Schreiben der neuen Char values
-        PLAYBULB_gattCharWrite($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae) if( !defined($dname) );
-        PLAYBULB_writeDevicename($mac,$adname,$dname) if( defined($dname) );
+        PLAYBULB_gattCharWrite($name,$sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae) if( !defined($dname) );
+        PLAYBULB_writeDevicename($name,$mac,$adname,$dname) if( defined($dname) );
         
     
         ##### Statusabruf nach dem schreiben der neuen Char Values
-        ($cc,$ec,$sat,$rgb,$effect,$speed)  = PLAYBULB_gattCharRead($mac,$ac,$ae) if( !defined($dname) );
-        $dname = PLAYBULB_readDevicename($mac,$adname) if( defined($dname) and $adname ne "none" );
+        ($cc,$ec,$sat,$rgb,$effect,$speed)  = PLAYBULB_gattCharRead($name,$mac,$ac,$ae) if( !defined($dname) );
+        $dname = PLAYBULB_readDevicename($name,$mac,$adname) if( defined($dname) and $adname ne "none" );
 
 
         $stateOnoff = PLAYBULB_stateOnOff($cc,$ec) if( !defined($dname) );
     
         ###### Batteriestatus einlesen
-        $blevel = PLAYBULB_readBattery($mac,$ab) if( $ab ne "none" and !defined($dname) );
+        $blevel = PLAYBULB_readBattery($name,$mac,$ab) if( $ab ne "none" and !defined($dname) );
         
         
         Log3 $name, 4, "(Sub PLAYBULB_Run - $name) - Rückgabe an Auswertungsprogramm beginnt";
@@ -371,43 +380,86 @@ sub PLAYBULB_BlockingRun($) {
     unless( defined($cc) and defined($ec) );
 }
 
-sub PLAYBULB_gattCharWrite($$$$$$$$$) {
+sub PLAYBULB_gattCharWrite($$$$$$$$$$) {
 
-    my ($sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae)  = @_;
+    my ($name,$sat,$rgb,$effect,$speed,$stateEffect,$stateOnoff,$mac,$ac,$ae)   = @_;
+    my $sshHost                                                                 = AttrVal($name,"sshHost","none");
     
     my $loop = 0;
-    while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
-        #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
-        sleep 0.5;
-        $loop++;
+    if( $sshHost ne 'none') {
+    
+        while ( (qx(ssh $sshHost 'ps ax | grep -v grep | grep "gatttool -b $mac"') and $loop = 0) or (qx(ssh $sshHost 'ps ax | grep -v grep | grep "gatttool -b $mac"') and $loop < 5) ) {
+            #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+            sleep 0.5;
+            $loop++;
+        }
+    } else {
+    
+        while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
+            #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+            sleep 0.5;
+            $loop++;
+        }
     }
     
     
     
     $speed = "01" if( $effect eq "Candle" );
     
-    if( $stateOnoff == 0 ) {
-        qx(gatttool -b $mac --char-write -a $ac -n 00000000);
-        qx(gatttool -b $mac --char-write -a $ae -n 00000000ff000000);
+    if( $sshHost ne 'none') {
+    
+        if( $stateOnoff == 0 ) {
+            qx(ssh $sshHost 'gatttool -b $mac --char-write -a $ac -n 00000000');
+        } else {
+            qx(ssh $sshHost 'gatttool -b $mac --char-write -a $ac -n ${sat}${rgb}') if( $stateEffect eq "none" and $effect eq "none" );
+            qx(ssh $sshHost 'gatttool -b $mac --char-write -a $ae -n ${sat}${rgb}${effects{$effect}}00${speed}00') if( $stateEffect ne "none" or $effect ne "none" );
+        }
+        
     } else {
-        qx(gatttool -b $mac --char-write -a $ac -n ${sat}${rgb}) if( $stateEffect eq "none" and $effect eq "none" );
-        qx(gatttool -b $mac --char-write -a $ae -n ${sat}${rgb}${effects{$effect}}00${speed}00) if( $stateEffect ne "none" or $effect ne "none" );
+    
+        if( $stateOnoff == 0 ) {
+            qx(gatttool -b $mac --char-write -a $ac -n 00000000);
+        } else {
+            qx(gatttool -b $mac --char-write -a $ac -n ${sat}${rgb}) if( $stateEffect eq "none" and $effect eq "none" );
+            qx(gatttool -b $mac --char-write -a $ae -n ${sat}${rgb}${effects{$effect}}00${speed}00) if( $stateEffect ne "none" or $effect ne "none" );
+        }
     }
 }
 
-sub PLAYBULB_gattCharRead($$$) {
+sub PLAYBULB_gattCharRead($$$$) {
 
-    my ($mac,$ac,$ae)       = @_;
+    my ($name,$mac,$ac,$ae)     = @_;
+    my $sshHost                 = AttrVal($name,"sshHost","none");
 
     my $loop = 0;
-    while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
-        #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
-        sleep 0.5;
-        $loop++;
+    if( $sshHost ne 'none') {
+    
+        while ( (qx(ssh $sshHost 'ps ax | grep -v grep | grep "gatttool -b $mac"') and $loop = 0) or (qx(ssh $sshHost 'ps ax | grep -v grep | grep "gatttool -b $mac"') and $loop < 5) ) {
+            #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+            sleep 0.5;
+            $loop++;
+        }
+    } else {
+    
+        while ( (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop = 0) or (qx(ps ax | grep -v grep | grep "gatttool -b $mac") and $loop < 5) ) {
+            #printf "\n(Sub PLAYBULB_Run) - gatttool noch aktiv, wait 0.5s for new check\n";
+            sleep 0.5;
+            $loop++;
+        }
     }
     
-    my @cc          = split(": ",qx(gatttool -b $mac --char-read -a $ac));
-    my @ec          = split(": ",qx(gatttool -b $mac --char-read -a $ae));
+    my @cc;
+    my @ec;
+    if( $sshHost ne 'none') {
+    
+        @cc          = split(": ",qx(ssh $sshHost 'gatttool -b $mac --char-read -a $ac'));
+        @ec          = split(": ",qx(ssh $sshHost 'gatttool -b $mac --char-read -a $ae'));
+        
+    } else {
+    
+        @cc          = split(": ",qx(gatttool -b $mac --char-read -a $ac));
+        @ec          = split(": ",qx(gatttool -b $mac --char-read -a $ae));
+    }
     
     return (undef,undef,undef,undef,undef,undef)
     unless( defined($cc[1]) and defined($ec[1]) );
@@ -430,14 +482,32 @@ sub PLAYBULB_gattCharRead($$$) {
     return ($cc,$ec,$sat,$rgb,$effect,$speed);
 }
 
-sub PLAYBULB_readBattery($$) {
+sub PLAYBULB_readBattery($$$) {
 
-    my ($mac,$ab)   = @_;
+    my ($name,$mac,$ab) = @_;
+    my $sshHost         = AttrVal($name,"sshHost","none");
+    my $blevel;
+    my @blevel;
     
-    chomp(my @blevel  = split(": ",qx(gatttool -b $mac --char-read -a $ab)));
-    my $blevel = substr(join("",split(" ",$blevel[1])),0,2);
-
-    return hex($blevel);
+    
+    if( $sshHost ne 'none') {
+    
+        chomp(@blevel  = split(": ",qx(ssh $sshHost 'gatttool -b $mac --char-read -a $ab')));
+        
+    } else {
+    
+        chomp(@blevel  = split(": ",qx(gatttool -b $mac --char-read -a $ab)));
+    }
+    
+    ### Bei den Garden Bulbs gibt es noch den Status wird geladen oder wird nicht geladen
+    ### Beispielausgabe "Characteristic value/descriptor: 51 01" in diesem Beispiel steht 01 für wird geladen
+    if( AttrVal($name,'model','none') eq 'BTL400M_v18' or AttrVal($name,'model','none') eq 'BTL400M_v37' ) {
+        $blevel = substr(join("",split(" ",$blevel[1])),0,4);
+    } else {
+        $blevel = substr(join("",split(" ",$blevel[1])),0,2);
+    }
+    
+    return ($blevel);
 }
 
 sub PLAYBULB_stateOnOff($$) {
@@ -454,22 +524,41 @@ sub PLAYBULB_stateOnOff($$) {
     return $state;
 }
 
-sub PLAYBULB_readDevicename($$) {
+sub PLAYBULB_readDevicename($$$) {
 
-    my ($mac,$adname)       = @_;
+    my ($name,$mac,$adname) = @_;
+    my $sshHost             = AttrVal($name,"sshHost","none");
+    my @dname;
 
-    chomp(my @dname  = split(": ",qx(gatttool -b $mac --char-read -a $adname)));
+    
+    if( $sshHost ne 'none') {
+    
+        chomp(@dname  = split(": ",qx(ssh $sshHost 'gatttool -b $mac --char-read -a $adname')));
+        
+    } else {
+    
+        chomp(@dname  = split(": ",qx(gatttool -b $mac --char-read -a $adname)));
+    }
+    
     my $dname = join("",split(" ",$dname[1]));
     
     return pack('H*', $dname);
 }
 
-sub PLAYBULB_writeDevicename($$$) {
+sub PLAYBULB_writeDevicename($$$$) {
 
-    my ($mac,$adname,$dname)       = @_;
-
+    my ($name,$mac,$adname,$dname)  = @_;
+    my $sshHost                     = AttrVal($name,"sshHost","none");
     my $hexDname = unpack("H*", $dname);
-    qx(gatttool -b $mac --char-write-req -a $adname -n $hexDname);
+    
+    if( $sshHost ne 'none') {
+    
+        qx(ssh $sshHost 'gatttool -b $mac --char-write-req -a $adname -n $hexDname');
+        
+    } else {
+    
+        qx(gatttool -b $mac --char-write-req -a $adname -n $hexDname);
+    }
 }
 
 sub PLAYBULB_forRun_encodeJSON($$$$$$$$$$$$$) {
@@ -519,12 +608,14 @@ sub PLAYBULB_BlockingDone($) {
     my $hash    = $defs{$name};
     my $state;
     my $color;
+    my $powerLevel;
+    my $powerCharge;
     
     
     
     delete($hash->{helper}{RUNNING_PID});
     
-    Log3 $name, 3, "(Sub PLAYBULB_Done - $name) - Der Helper ist disabled. Daher wird hier abgebrochen" if($hash->{helper}{DISABLED});
+    Log3 $name, 3, "(Sub PLAYBULB_Done - $name) - Der Helper ist diabled. Daher wird hier abgebrochen" if($hash->{helper}{DISABLED});
     return if($hash->{helper}{DISABLED});
     
     
@@ -545,9 +636,17 @@ sub PLAYBULB_BlockingDone($) {
             $color = "off"; } else { $color = "on"; }
     }
     
+    if( AttrVal($name,'model','none') eq 'BTL400M_v18' or AttrVal($name,'model','none') eq 'BTL400M_v37' ) {
+        $powerLevel      = hex(substr($response_json->{blevel},0,2));
+        $powerCharge    = hex(substr($response_json->{blevel},3,3));
+    } else {
+        $powerLevel      = hex($response_json->{blevel});
+    }
+    
     readingsBeginUpdate($hash);
     readingsBulkUpdate($hash, "color", "$color") if( !defined($hash->{helper}{setDeviceName}) );
-    readingsBulkUpdate($hash, "battery", $response_json->{blevel}) if( $response_json->{blevel} != 1000 and !defined($hash->{helper}{setDeviceName}) );
+    readingsBulkUpdate($hash, "powerLevel", $powerLevel) if( $powerLevel != 1000 and !defined($hash->{helper}{setDeviceName}) );
+    readingsBulkUpdate($hash, "powerCharge", $powerCharge) if( $powerLevel != 1000 and !defined($hash->{helper}{setDeviceName}) and defined($powerCharge) );
     readingsBulkUpdate($hash, "deviceName", $response_json->{dname});
     readingsBulkUpdate($hash, "onoff", $response_json->{stateOnoff});
     readingsBulkUpdate($hash, "sat", $response_json->{sat}) if( $response_json->{stateOnoff} != 0 and $color ne "off" );
@@ -605,61 +704,147 @@ sub PLAYBULB_BlockingAborted($) {
 
 =begin html
 
+<a name="PLAYBULB"></a>
+<h3>MiPow Playbulb</h3>
+<p><span style="text-decoration: underline;"><strong>PLAYBULB -Smart Light from MIPOW.COM</strong></span></p>
+<p>This module integrates different smart lights from MIPOW into FHEM and displays several settings</p>
+<p>&nbsp;</p>
+<p><a name="PLAYBULBdefine"></a><strong>Define</strong><br /><code>define &lt;name&gt; PLAYBULB &lt;MAC-ADDRESS&gt;</code></p>
+<p>Example: <code>define PlaybulbCandle PLAYBULB 0B:0B:0C:D0:E0:F0</code></p>
+<p>&nbsp;</p>
+<p>With this command a new PLAYBULB device in a room called PLAYBULB is created. The parameter &lt;MAC-ADDRESS&gt; defines the bluetooth MAC address of your mipow smart light.</p>
+<p>&nbsp;</p>
+<p style="padding-left: 90px;"><strong>pre-requesites</strong>: a BT LE 4.0 key and a working bluez installation or equivalent is necessary. (find a good guide at <a href="http://www.elinux.org/RPi_Bluetooth_LE)">http://www.elinux.org/RPi_Bluetooth_LE)</a></p>
+<p style="padding-left: 90px;">It seems like the devices accept only one active connection.</p>
+<p><br /><a name="PLAYBULBreadings"></a><strong>Readings</strong></p>
+<ul>
+<ul>
+<ul>
+<li>powerLevel - percentage of batterylevel</li>
+<li>powerCharge - state of charging (Playbulb Garden only)</li>
+<li>color - indicates if colormode is on or off</li>
+<li>devicename - given name of the device</li>
+<li>effect - indicates which effect is selected (Flash; Pulse; RainbowJump; RainbowFade; Candle; none)</li>
+<li>onoff - indicates if the device is turned on (1) or off (0)</li>
+<li>rgb - shows the selected color in hex by rgb (example: FF0000 is full red)</li>
+<li>sat - shows the selected saturation from 0 to 255 (seems to be inverted; 0 is full saturation)</li>
+<li>speed - shows the selected effect speed (possible: 20; 70; 120; 170)</li>
+<li>state - current state of PLAYBULB device</li>
+</ul>
+</ul>
+</ul>
+<p><a name="PLAYBULBset"></a><strong>Set</strong></p>
+<ul>
+<ul>
+<ul>
+<li>on - turns device on</li>
+<li>off - turns device off</li>
+<li>rgb - colorpicker,RGB; gives the possibility to set any hue, saturation, brightness</li>
+<li>sat - saturation slider from 0 to 255 steps 5</li>
+<li>effect - Flash,Pulse,RainbowJump,RainbowFade,Candle,none; activates the selected effect</li>
+<li>speed - slider: values are 170, 120, 70, 20</li>
+<li>color - on,of; switches the device to rgb or white</li>
+<li>statusRequest - is necessary to request state of the device</li>
+<li>deviceName - changes the name of the bluetoothdevice e.g. "PlaybulbCandle"</li>
+</ul>
+</ul>
+</ul>
+<p><br /><strong>Get na</strong></p>
+<p>&nbsp;</p>
+<p><strong>Attributes&nbsp; </strong></p>
+<ul>
+<ul>
+<ul>
+<li>model<br />BTL300_v5&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 5<br />BTL300_v6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 6<br />BTL201_v2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Smart<br />BTL201M_V16&nbsp; # Smart (1/2017)<br />BTL505_v1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Stripe<br />BTL400M_v18&nbsp; # Garden<br />BTL100C_v10&nbsp; # Color LED</li>
+<li>sshHost - IP or FQDN for SSH remote control</li>
+</ul>
+</ul>
+</ul>
+<p><br /><a name="PLAYBULBstate"></a><strong>state</strong></p>
+<ul>
+<ul>
+<ul>
+<li>set attribut model&nbsp;- is shown after initial define</li>
+<li>on - device is on</li>
+<li>off - device is off</li>
+<li>unreachable - connection to device lost</li>
+</ul>
+</ul>
+</ul>
+<p><br /><br /><br /><span style="text-decoration: underline;"><strong>Further examples and readings:</strong></span><br /><a href="https://forum.fhem.de/index.php/topic,60829.msg522226.html#msg522226">Forum thread (german only)</a><br /><br /></p>
+
 =end html
 
 =begin html_DE
 
 <a name="PLAYBULB"></a>
 <h3>MiPow Playbulb</h3>
+<p><span style="text-decoration: underline;"><strong>PLAYBULB -Smart Light von MIPOW.COM</strong></span></p>
+<p>Dieses Modul integriert diverse Smart Leuchten von MIPOW in FHEM und zeigt ihre Einstellungen an.</p>
+<p>&nbsp;</p>
+<p><a name="PLAYBULBdefine"></a><strong>Define</strong><br /><code>define &lt;name&gt; PLAYBULB &lt;MAC-ADDRESS&gt;</code></p>
+<p>Beispiel: <code>define PlaybulbCandle PLAYBULB 0B:0B:0C:D0:E0:F0</code></p>
+<p>&nbsp;</p>
+<p>Mit diesem Kommando wird ein neues PLAYBULB Device im Raum PLAYBULB angelegt. Der Parameter &lt;MAC-ADDRESS&gt; definiert die Bluetooth MAC Address der Mipow Smart Leuchte.</p>
+<p>&nbsp;</p>
+<p style="padding-left: 90px;"><strong>Vorbedingungen</strong>: Es wird ein Bluetooth LE 4.0 Stick, sowie eine funktionierende bluez Installation oder aehnlich vorausgesetzt. (Eine gute Anleitung findedsich hier: <a href="http://www.elinux.org/RPi_Bluetooth_LE)">http://www.elinux.org/RPi_Bluetooth_LE)</a></p>
+<p style="padding-left: 90px;">Derzeit sieht es so aus, als ob die Devices nur eine aktive Verbindung akzeptieren.</p>
+<p><br /><a name="PLAYBULBreadings"></a><strong>Readings</strong></p>
 <ul>
-  <u><b>MiPow Playbulb - Zum steuern von MiPow Playbulb Produkten</b></u>
-  <br>
-  Mit diesem Modul ist es möglich die MiPow Playbulb Produkte über FHEM zu steuern</br>
-  Voraussetzung hierfür ist ein BT LE 4.0 Empfänger/Sender (USB Stick), sowie die Programme gatttool und hcitool  (apt-get install bluez)</br>
-  
-  <br><br>
-  <a name="XiaomiFlowerSensdefine"></a>
-  <b>Define</b>
-  <ul><br>
-    <code>define &lt;name&gt; XiaomiFlowerSens &lt;BT-MAC&gt;</code>
-    <br><br>
-    Example:
-    <ul><br>
-      <code>define Weihnachtskaktus XiaomiFlowerSens C4:7C:8D:62:42:6F</code><br>
-    </ul>
-    <br>
-    This statement creates a XiaomiFlowerSens with the name Weihnachtskaktus and the Bluetooth Mac C4:7C:8D:62:42:6F.<br>
-    After the device has been created, the current data of the Xiaomi Flower Monitor is automatically read from the device.
-  </ul>
-  <br><br>
-  <a name="XiaomiFlowerSensreadings"></a>
-  <b>Readings</b>
-  <ul>
-    <li>state - Status of the flower sensor or error message if any errors.</li>
-    <li>battery - current battery state dependent on batteryLevel.</li>
-    <li>batteryLevel - current battery level in percent.</li>
-    <li>fertility - Values for the fertilizer content</li>
-    <li>firmware - current device firmware</li>
-    <li>lux - current light intensity</li>
-    <li>moisture - current moisture content</li>
-    <li>temperature - current temperature</li>
-  </ul>
-  <br><br>
-  <a name="XiaomiFlowerSensset"></a>
-  <b>Set</b>
-  <ul>
-    <li>statusRequest - retrieves the current state of the Xiaomi Flower Monitor.</li>
-    <br>
-  </ul>
-  <br><br>
-  <a name="NUKIDeviceattribut"></a>
-  <b>Attributes</b>
-  <ul>
-    <li>disable - disables the Nuki device</li>
-    <li>interval - interval in seconds for statusRequest</li>
-    <br>
-  </ul>
+<ul>
+<ul>
+<li>battery - Batterielevel in Prozent</li>
+<li>color - Zeigt an ob der Farbmodus an oder aus ist</li>
+<li>devicename - Geraetename</li>
+<li>effect - Zeigt an, welcher effect ausgewaehlt ist: (Flash; Pulse; RainbowJump; RainbowFade; Candle; none)</li>
+<li>onoff - Zeigt an, ob das Geraet an (1) oder aus (0) ist</li>
+<li>rgb - Zeigt die gewaehlte Farbe in HEX vom Typ rgb (Beispiel: FF0000 ist satt rot)</li>
+<li>sat - Zeigt die gewaehlte Saettigung von 0 bis 255 (scheint invertiert zu sein; 0 ist volle Saettigung)</li>
+<li>speed - Zeigt die gewaehlte Effektgeschwindigkeit (moeglich sind: 20; 70; 120; 170)</li>
+<li>state - Aktueller Zustand des Devices</li>
 </ul>
+</ul>
+</ul>
+<p><a name="PLAYBULBset"></a><strong>Set</strong></p>
+<ul>
+<ul>
+<ul>
+<li>on - Schaltet das Geraet ein</li>
+<li>off - Schaltet das Geraet aus</li>
+<li>rgb - Farbwaehler,RGB; ermoeglicht jede Farbe, Saettigung und Helligkeit einzustellen</li>
+<li>sat - Schieber zur Einstellung der Saettigungvon 0 bis 255, Schrittweite 5</li>
+<li>effect - Flash,Pulse,RainbowJump,RainbowFade,Candle,none; aktiviert den gewaehlten Effekt</li>
+<li>speed - Schieberegler: Werte sind 170, 120, 70, 20</li>
+<li>color - on,of; Schaltet das Geraet auf RGB oder weiss</li>
+<li>statusRequest - Ist notwendig, um den Zustand des Geraetes abzufragen</li>
+<li>deviceName - Aendert den Namen des Bluetoothdevice z.B. "PlaybulbCandle"</li>
+</ul>
+</ul>
+</ul>
+<p><br /><strong>Get na</strong></p>
+<p>&nbsp;</p>
+<p><strong>Attributes&nbsp; </strong></p>
+<ul>
+<ul>
+<ul>
+<li>model<br />BTL300_v5&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 5<br />BTL300_v6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Candle Firmware 6<br />BTL201_v2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Smart<br />BTL201M_V16&nbsp; # Smart (1/2017)<br />BTL505_v1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; # Stripe<br />BTL400M_v18&nbsp; # Garden<br />BTL100C_v10&nbsp; # Color LED</li>
+<li>sshHost - IP oder FQDN für SSH remote Kontrolle</li>
+</ul>
+</ul>
+</ul>
+<p><br /><a name="PLAYBULBstate"></a><strong>state</strong></p>
+<ul>
+<ul>
+<ul>
+<li>set attribut model&nbsp;- wird nach der Erstdefinition angezeigt</li>
+<li>on - Device ist an</li>
+<li>off - Device ist aus</li>
+<li>unreachable - Verbindung zum device verloren</li>
+</ul>
+</ul>
+</ul>
+<p><br /><br /><br /><span style="text-decoration: underline;"><strong>Weitere Beispiel und readings:</strong></span><br /><a href="https://forum.fhem.de/index.php/topic,60829.msg522226.html#msg522226">Forum thread</a></p>
+<p>&nbsp;</p>
 
 =end html_DE
 
