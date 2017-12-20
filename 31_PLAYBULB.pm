@@ -41,7 +41,7 @@ use Blocking;
 use SetExtensions;
 
 
-my $version = "1.2.9";
+my $version = "1.4.0";
 
 
 
